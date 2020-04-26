@@ -204,6 +204,7 @@ if __name__ == "__main__":
     
     # cria o diretório de saída se não existir
     if not path.isdir(args.output):
+        logging.debug('Criando diretório de saída: {}'.format(args.output))
         os.mkdir(args.output)
 
     output_csv = path.join(args.output, '{}.csv'.format(dataset_type))
