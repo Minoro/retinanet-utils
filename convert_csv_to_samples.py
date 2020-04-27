@@ -1,5 +1,15 @@
 '''
     Converte os arquivos CSV contentendo as informações dos Polygonos para amostras da Retinanet
+    O Arquivo CSV será convertido em um dataframe e os dados dos poligonos (columa geometry) 
+    será transformada em objeto do tipo Pologyon
+
+    Os poligonos serão transformados em um retangulo envolvente que pode ser expandido em um determinado
+    número de pixels
+
+    O CSV de entrada deve conter apenas o nome das imagens, o caminho para elas será fornecido como parâmetro
+    para este script e adicionado ao dataframe
+
+    Amostras menores que os tamanhos definidos serão desconsideradas
 '''
 
 import pandas as pd
@@ -8,9 +18,6 @@ import numpy as np
 import random
 import os
 from os import path
-from skimage.io import imread
-from PIL import Image, ImageDraw
-import matplotlib.pyplot as plt
 import json
 from shapely import wkt
 import csv
@@ -20,7 +27,7 @@ import sys
 
 RANDOM_SEED = 42
 
-# BORDER = 10 #pixels de borda
+# Tamanho mínimo dos retângulos envolventes
 MIN_WIDTH = 32
 MIN_HEIGHT = 32 
 
