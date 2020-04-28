@@ -108,7 +108,7 @@ if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(
         description=
-        """convert_csv_to_samples.py: Transforma os arquivos em CSV com poligonos de danos das contruções em um CSV de amostras para a Retinanet\n""")
+        """subsampler.py: Gera um conjunto de subamostras a partir de todas as amostras\n""")
 
     parser.add_argument('--input',
                         required=True,
