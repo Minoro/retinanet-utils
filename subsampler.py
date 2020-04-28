@@ -137,8 +137,6 @@ if __name__ == "__main__":
 
     logging.debug('Modo verboso ativo')
 
-
-    # dataframe_path = '/home/minoro/Documentos/dataset/xview_challenge/dataframes/xy/samples_reginanet.csv'
     df = load_dataframe(args.input)
 
     subsample_df = subsample_per_image(df, args.num_samples, args.max_samples_per_image)
