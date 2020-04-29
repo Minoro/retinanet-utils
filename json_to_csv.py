@@ -144,7 +144,7 @@ if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(
         description=
-        """json_to_csv.py: Transforma os arquivos json do xDB dataset em um csv, transformando cada polygono em uma linha do csv\n""")
+        """json_to_csv.py: Transforma os arquivos json do xBD dataset em um csv, transformando cada polygono em uma linha do csv\n""")
 
     parser.add_argument('--input',
                         required=True,
