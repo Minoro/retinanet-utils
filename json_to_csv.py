@@ -9,9 +9,6 @@ import geopandas as gpd
 import numpy as np
 import os
 from os import path
-from skimage.io import imread
-from PIL import Image, ImageDraw
-import matplotlib.pyplot as plt
 import json
 from shapely import wkt
 from tqdm import tqdm
