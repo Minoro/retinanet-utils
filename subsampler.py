@@ -95,7 +95,7 @@ def subsample_per_image(df, max_num_samples=100, max_samples_per_image=10):
 
 def subsamples_to_csv(df, file_path):
     df.drop(['disaster', 'shape'], errors='ignore')
-    df.to_csv(file_path, index=False)
+    df.to_csv(file_path, index=False,  header=False)
 
 
 
