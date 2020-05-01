@@ -68,64 +68,66 @@ def read_properties(polygon_data):
     return data
 
 
-def convert_to_dataframe(labels_path, dataset, split_pre_and_post=True):
-	''' Converte as labels do arquivo JSON para dataframe transformando cada poligono
-		em uma linha no dataframe;
-		Os metadados são transformados em colunas.
-		São criados três dataframes distrintos, um com todas as imagens, um com o pré-desastre e outro com o pós-desastre
+def convert_to_dataframe(labels_path, images_path, dataset, split_pre_and_post=True):
+    ''' Converte as labels do arquivo JSON para dataframe transformando cada poligono
+        em uma linha no dataframe;
+        Os metadados são transformados em colunas.
+        São criados três dataframes distrintos, um com todas as imagens, um com o pré-desastre e outro com o pós-desastre
 
-		:param labels_path - caminho até a pasta onde se encontram as labels em arquivo JSON
+        :param labels_path - caminho até a pasta onde se encontram as labels em arquivo JSON
+        :param images_path - caminho até a pasta onde se encontram as images para ser adicionado ao nome das imagems
         :param dataset - especifica qual parte do dataset está utilizando (train, tier3, test, holdout)
-		:param split_pre_and_post - se verdadeiro cria três dataframes distintos, um com todas as imagens, um com o pré-desastre e outro com o pós-desastre
-	'''
+        :param split_pre_and_post - se verdadeiro cria três dataframes distintos, um com todas as imagens, um com o pré-desastre e outro com o pós-desastre
+    '''  
 
-	df_data = []
-	df_pre_data = []
-	df_post_data = []
+    df_data = []
+    df_pre_data = []
+    df_post_data = []
 
-	for file_name in tqdm(os.listdir(labels_path)):
-	    file_name_parts = file_name.split('_')
-	    
-	    disaster = file_name_parts[0]
-	    file_number = file_name_parts[1]
-	    pre_post_disaster = file_name_parts[2]
-	    sufix = file_name_parts[3]
-	    
-	    json_file_path = os.path.join(labels_path, file_name)
-	    json_data = read_json(json_file_path)
-	    
-	    
-	    df_content = {
-	        'disaster': disaster, 
-	        'file_number': file_number, 
-	        'file_name': file_name,
-	        'pre_or_post_type': pre_post_disaster,
-	        'dataset': dataset,
-	    }
-	    
-	    #combina os dicionarios
-	    df_content = {**df_content, **json_data['metadata']}
-	    
-	    polygons_data = json_data['features']['xy']
-	    
-	    for polygon_data in polygons_data:
-	        data = read_properties(polygon_data)
-	        
-	        row = { **df_content, **data }
-	        df_data.append(row)
-	        
-	        if split_pre_and_post:
-		        # separa em dataframes distintos
-		        if pre_post_disaster == 'pre':
-		            df_pre_data.append(row)
-		        else:
-		            df_post_data.append(row)
-	    
-	df = pd.DataFrame(df_data)
-	df_pre = pd.DataFrame(df_pre_data)
-	df_post = pd.DataFrame(df_post_data)
+    for file_name in tqdm(os.listdir(labels_path)):
+        file_name_parts = file_name.split('_')
 
-	return df, df_pre, df_post
+        disaster = file_name_parts[0]
+        file_number = file_name_parts[1]
+        pre_post_disaster = file_name_parts[2]
+        sufix = file_name_parts[3]
+
+        json_file_path = os.path.join(labels_path, file_name)
+        json_data = read_json(json_file_path)
+
+
+        df_content = {
+            'disaster': disaster, 
+            'file_number': file_number, 
+            'file_name': file_name,
+            'pre_or_post_type': pre_post_disaster,
+            'dataset': dataset,
+        }
+
+        #combina os dicionarios
+        df_content = {**df_content, **json_data['metadata']}
+        #adiciona o caminho das images ao nome do arquivo
+        df_content['img_name'] = path.join(images_path, df_content['img_name']) 
+
+        polygons_data = json_data['features']['xy']
+
+        for polygon_data in polygons_data:
+            data = read_properties(polygon_data)
+            row = { **df_content, **data }
+            df_data.append(row)
+
+            if split_pre_and_post:
+                # separa em dataframes distintos
+                if pre_post_disaster == 'pre':
+                    df_pre_data.append(row)
+                else:
+                    df_post_data.append(row)
+
+    df = pd.DataFrame(df_data)
+    df_pre = pd.DataFrame(df_pre_data)
+    df_post = pd.DataFrame(df_post_data)
+
+    return df, df_pre, df_post
 
 
 def dataframe_to_csv(df, file_path):
@@ -149,7 +151,8 @@ if __name__ == "__main__":
     parser.add_argument('--input',
                         required=True,
                         metavar="/path/to/xBD/",
-                        help='Caminho até o diretório base do dataset, pode ser o de treino, tier3, test ou holdout')
+                        help="""Caminho até o diretório base do dataset, pode ser o de treino, tier3, test ou holdout.\n
+                        A pasta de imagens e labels deve estar dentro do diretório""")
 
     parser.add_argument('--output', required=True, metavar="/path/output/csv/", help='Caminho para salvar os arquivos em csv')
 
@@ -197,7 +200,7 @@ if __name__ == "__main__":
     dataset_type = folders[-1]
 
     logging.debug('Parte do dataset')
-    df, df_pre, df_post = convert_to_dataframe(labels_path, dataset_type, args.split_pre_post)
+    df, df_pre, df_post = convert_to_dataframe(labels_path, images_path, dataset_type, args.split_pre_post)
     
     # cria o diretório de saída se não existir
     if not path.isdir(args.output):
