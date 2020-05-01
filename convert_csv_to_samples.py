@@ -33,14 +33,39 @@ MIN_HEIGHT = 32
 
 IMAGE_SIZE = (1024, 1024)
 
+# Tamanho padrão das ancoras de treino
+ANCHOR_SIZES = [32, 64, 128, 512]
 
-def sample_coords(df, images_path, border=10):
+
+
+
+def export_dataframe_to_samples(df, output_csv, border=10, min_distance=0, fit_anchors=False, overlap=True):
+    # embaralha o dataframe
+    df.sample(frac=1, random_state=RANDOM_SEED).reset_index(drop=True)
+
+    disasters_types = df['disaster_type'].unique()
+    logging.debug('Número de desastres {}...'.format(len(disasters_types)))
+    
+    for disaster_type in disasters_types:
+
+        sub_sampled_df = df[ df['disaster_type'] == disaster_type]
+        
+        logging.debug('Amostrando {}...'.format(disaster_type))
+        samples = sample_coords(sub_sampled_df, border, min_distance, fit_anchors, overlap)
+
+        logging.debug('Total de amostras {}'.format(len(samples)))
+        logging.debug('Exportando para CSV: {}...'.format(output_csv))
+
+        write_samples_to_csv(samples, output_csv)
+
+
+def sample_coords(df, border=10, min_distance=0, fit_anchors=False, overlap=True):
     '''
         Amostra as coordenadas do CSV e transforma em amostra para a Retinanet
         
         :param df - dataframe dos poligonos
-        :images_path - caminho até o diretório de imagens para treino do modelo
         :border - tamanho em pixels para expandir as amostras
+        :fit_anchors - Se verdadeiro aproxima o tamanho da amostra aos tamanhos das ancoras
         :return - lista com as amostras geradas no formato [path_image, x1, y1, x2, y2, classe]
     '''
 
@@ -56,21 +81,18 @@ def sample_coords(df, images_path, border=10):
 
         for polygon in polygons:
             coords =  np.array(list(polygon.exterior.coords))
-            xmin, xmax, ymin, ymax = get_sample_coords(coords, border)
+            xmin, xmax, ymin, ymax = get_sample_coords(coords, border, min_distance, fit_anchors)
 
             #amostra com coordenadas inválida
             if xmin is None:
                 continue
                 
-            #caminho para a imagem, utilizado no treino
-            img_path = os.path.join(images_path, img_name)
-
-            sample = (img_path, xmin, ymin, xmax, ymax, disaster_type)
+            sample = (img_name, xmin, ymin, xmax, ymax, disaster_type)
             samples.append(sample)
     
     return samples
 
-def get_sample_coords(coords, border=10):
+def get_sample_coords(coords, border=10, min_distance=0, fit_anchors=False, overlap=True):
     '''
         Extrai as coordenadas do retângulo que envolve o poligono
         Expande o retangulo pelo tamanho das bordas
@@ -84,16 +106,75 @@ def get_sample_coords(coords, border=10):
     xdiff = xmax - xmin
     ydiff = ymax - ymin
     
-    if xdiff <= MIN_WIDTH or ydiff <= MIN_HEIGHT:
+    if xdiff < MIN_WIDTH or ydiff < MIN_HEIGHT:
         return None, None, None, None
-    
-    xmin = max(int(xmin - border), 0)
-    xmax = min(int(xmax + border), IMAGE_SIZE[1])
-    ymin = max(int(ymin - border), 0)
-    ymax = min(int(ymax + border), IMAGE_SIZE[0])
 
+    xmin, xmax, ymin, ymax = expand_borders(xmin, xmax, ymin, ymax, border)
+
+    if fit_anchors:
+        return get_fited_anchor(xmin, xmax, ymin, ymax)
+    
     return (xmin, xmax, ymin, ymax)
 
+
+def get_fited_anchor(xmin, xmax, ymin, ymax):
+    xmin, xmax = get_expanded_anchor_min_max(xmin, xmax)
+    ymin, ymax = get_expanded_anchor_min_max(ymin, ymax)
+    
+    # Descarta coordenadas que não se enquadram nos tamanhos das ancoras
+    if xmin is None or ymin is None:
+        return None, None, None, None
+    
+    return xmin, xmax, ymin, ymax
+
+
+def get_expanded_anchor_min_max(min_coord, max_coord):
+    # Recalcula após a adição das bordas
+    diff = max_coord - min_coord
+
+    close_anchor_size = get_close_anchor_size(diff) 
+    
+    # caixa maior que o limite das ancoras
+    if close_anchor_size is None:
+        return None, None
+
+    exprand_anchor_size = int( (diff - close_anchor_size) / 2)
+    min_coord = reduce_border(min_coord, exprand_anchor_size)
+
+    #ajuste para diferenças impares para compensar na caixa maior
+    if exprand_anchor_size%2 != 0:
+        exprand_anchor_size += 1
+
+    max_coord = augment_border(max_coord, exprand_anchor_size)
+
+    return min_coord, max_coord
+
+
+def expand_borders(xmin, xmax, ymin, ymax, border=10):
+    xmin = reduce_border(xmin, border)
+    xmax = augment_border(xmax, border)
+    ymin = reduce_border(ymin, border)
+    ymax = augment_border(ymax, border)
+
+    return xmin, xmax, ymin, ymax
+
+def reduce_border(position, border):
+    return max(int(position - border), 0)
+
+def augment_border(position, border):
+    return min(int(position + border), IMAGE_SIZE[0])
+
+
+def get_close_anchor_size(anchor_size):
+    i = 0
+    while i < len(ANCHOR_SIZES) and ANCHOR_SIZES[i] < anchor_size:
+        i += 1
+    
+    # Desconsidera tamanhos maiores que o limite das ancoras
+    if i < len(ANCHOR_SIZES):
+        return ANCHOR_SIZES[i]
+    
+    return None
 
 def write_samples_to_csv(samples, file_name):
     '''
@@ -103,25 +184,19 @@ def write_samples_to_csv(samples, file_name):
         csv_writer = csv.writer(csvfile)
         csv_writer.writerows(samples)
 
+def load_dataframes(input_csv, merge_csv=None):
+    
+    logging.debug('Carregando dataframe: {}'.format(input_csv))
+    df = pd.read_csv(input_csv)
+    
+    if merge_csv:
+        logging.debug('Combinando com dataframe: {}'.format(merge_csv))
+        df = df.append(pd.read_csv(merge_csv), ignore_index=True, sort=False)
 
-def export_dataframe_to_samples(df, images_path, output_csv, border=10):
-    # embaralha o dataframe
-    df.sample(frac=1, random_state=RANDOM_SEED).reset_index(drop=True)
+    logging.debug('Convertendo geometria')
+    df['geometry'] = df['geometry'].apply(wkt.loads)
 
-    disasters_types = df['disaster_type'].unique()
-
-    for disaster_type in disasters_types:
-        sub_sampled_df = df[ df['disaster_type'] == disaster_type]
-        
-        logging.debug('Amostrando {}...'.format(disaster_type))
-        samples = sample_coords(sub_sampled_df, images_path, border)
-
-        logging.debug('Total de amostras {}'.format(len(samples)))
-        logging.debug('Exportando para CSV: {}...'.format(output_csv))
-
-        write_samples_to_csv(samples, output_csv)
-
-
+    return df
 
 if __name__ == "__main__":
     import argparse
@@ -136,12 +211,10 @@ if __name__ == "__main__":
                         metavar="/path/to/csv/datraframe.csv",
                         help='Caminho o CSV contendo os polygonos de danos. Cada poligono deve ser uma linha do csv')
 
-
-    parser.add_argument('--images-path',
-                        required=True,
-                        metavar="/path/to/images/",
-                        help='Caminho para as imagens de treino para serem encontradas pelo modelo')
-
+    parser.add_argument('--merge',
+                        required=False,
+                        metavar="/path/to/csv/datraframe_to_merge.csv",
+                        help='Caminho o CSV contendo os polygonos de danos para ser mesclado com o dataframe de entrada.')
 
     parser.add_argument('--output', required=True, metavar="/path/output/csv/samples.csv", help='Caminho até o arquivo CSV de amostras para treino da Retinanet')
 
@@ -149,32 +222,35 @@ if __name__ == "__main__":
                         default=10,
                         help='Tamanho da borda (em pixels) para expandir os poligonos das construções')
 
+    #TODO - Implementar
+    parser.add_argument('--min-distance', 
+                        default=0,
+                        help='Distância mínima (em px) das amostras')
+
+    parser.add_argument("--fit-anchors", help="Cria as caixas de treino no tamanho da ancora maior mais próxima", action="store_true")
+
+    #TODO - Implementar
+    parser.add_argument("--no-overlap", help="Evita que haja sobreposição das amostras", action="store_true")
+
     parser.add_argument("-v", "--verbose", help="Exibe mensagens durante a execução", action="store_true")
 
     args = parser.parse_args()
-
-    if not path.isdir(args.images_path):
-        print(
-            "[ERROR] Diretório não encontrado {}.\n\n"
-            .format(args.images_path),
-            file=sys.stderr)
-        sys.exit(2)
-
-
 
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
 
     logging.debug('Modo verboso ativo')
 
+    df = load_dataframes(args.input, args.merge)
 
-    # Se for informado
     output_csv = args.output
     if path.isdir(output_csv):
         output_csv = path.join(output_csv, 'samples.csv')
+        logging.debug('Arquivo de saida: {}',format(output_csv))
 
+    if path.exists(output_csv):
+        os.remove(output_csv)
 
-    df = pd.read_csv(args.input)
-    df['geometry'] = df['geometry'].apply(wkt.loads)
+    overlap = not args.no_overlap
 
-    export_dataframe_to_samples(df, args.images_path, output_csv, args.border)
+    export_dataframe_to_samples(df, output_csv, args.border, args.min_distance, args.fit_anchors, overlap)
