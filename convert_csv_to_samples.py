@@ -86,7 +86,7 @@ def sample_coords(df, border=10, min_distance=0, fit_anchors=False, overlap=True
             #amostra com coordenadas inválida
             if xmin is None:
                 continue
-                
+
             sample = (img_name, xmin, ymin, xmax, ymax, disaster_type)
             samples.append(sample)
     
@@ -122,7 +122,7 @@ def get_fited_anchor(xmin, xmax, ymin, ymax):
     ymin, ymax = get_expanded_anchor_min_max(ymin, ymax)
     
     # Descarta coordenadas que não se enquadram nos tamanhos das ancoras
-    if xmin is None or ymin is None:
+    if xmin is None or xmax is None or ymin is None or ymax is None:
         return None, None, None, None
     
     return xmin, xmax, ymin, ymax
@@ -132,13 +132,12 @@ def get_expanded_anchor_min_max(min_coord, max_coord):
     # Recalcula após a adição das bordas
     diff = max_coord - min_coord
 
-    close_anchor_size = get_close_anchor_size(diff) 
-    
+    close_anchor_size = get_close_anchor_size(diff)
     # caixa maior que o limite das ancoras
     if close_anchor_size is None:
         return None, None
 
-    exprand_anchor_size = int( (diff - close_anchor_size) / 2)
+    exprand_anchor_size = int( (close_anchor_size - diff) / 2)
     min_coord = reduce_border(min_coord, exprand_anchor_size)
 
     #ajuste para diferenças impares para compensar na caixa maior
@@ -150,7 +149,7 @@ def get_expanded_anchor_min_max(min_coord, max_coord):
     return min_coord, max_coord
 
 
-def expand_borders(xmin, xmax, ymin, ymax, border=10):
+def expand_borders(xmin, xmax, ymin, ymax, border):
     xmin = reduce_border(xmin, border)
     xmax = augment_border(xmax, border)
     ymin = reduce_border(ymin, border)
