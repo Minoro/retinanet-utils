@@ -16,7 +16,7 @@ DEFAULT_COLOR = (0, 255, 0, 100)
 def load_dataframe(csv_path):
     return pd.read_csv(csv_path, names=['img_path', 'xmin', 'ymin', 'xmax', 'ymax', 'disaster_type'])
 
-def show(samples_csv, image_name=None):
+def show(samples_csv, image_name=None, show_text=False):
     df = load_dataframe(samples_csv)
     logging.debug('Total de amostras: {}'.format( len(df.index) ))
 
@@ -44,7 +44,9 @@ def show(samples_csv, image_name=None):
 
         coords = [(xmin, ymin), (xmax, ymax)]
         draw.rectangle(coords, outline=DEFAULT_COLOR)
-        draw.text((xmin, ymin), "xmin: {} \nymin: {}\nxmax: {} \nymax: {}  \nxdiff: {} \nydiff: {}".format(xmin, ymin, xmax, ymax, xmax-xmin, ymax-ymin))
+
+        if show_text:
+            draw.text((xmin, ymin), "xmin: {} \nymin: {}\nxmax: {} \nymax: {}  \nxdiff: {} \nydiff: {}".format(xmin, ymin, xmax, ymax, xmax-xmin, ymax-ymin))
 
 
     logging.debug('Exibindo Imagem...')
@@ -66,6 +68,8 @@ if __name__ == "__main__":
 
     parser.add_argument('--name', metavar="nome_da_amostra.png", help='Nome da amostra para ser exibida')
 
+    parser.add_argument('--show-text', help='Exibe texto com informações das dimensões dos poligonos', action="store_true")
+
     parser.add_argument("-v", "--verbose", help="Exibe mensagens durante a execução", action="store_true")
 
     args = parser.parse_args()
@@ -75,4 +79,4 @@ if __name__ == "__main__":
 
     logging.debug('Modo verboso ativo')
 
-    show(args.input, args.name)
+    show(args.input, args.name, args.show_text)
