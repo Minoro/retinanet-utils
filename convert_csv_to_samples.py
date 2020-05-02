@@ -137,11 +137,12 @@ def get_expanded_anchor_min_max(min_coord, max_coord):
     if close_anchor_size is None:
         return None, None
 
-    exprand_anchor_size = int( (close_anchor_size - diff) / 2)
+    diff_to_anchor_size = close_anchor_size - diff
+    exprand_anchor_size = int( (diff_to_anchor_size) / 2)
     min_coord = reduce_border(min_coord, exprand_anchor_size)
 
     #ajuste para diferenças impares para compensar na caixa maior
-    if exprand_anchor_size%2 != 0:
+    if diff_to_anchor_size%2 != 0:
         exprand_anchor_size += 1
 
     max_coord = augment_border(max_coord, exprand_anchor_size)
