@@ -25,7 +25,7 @@ def convert_to_polygon(row):
         (row['xmin'], row['ymin']), 
         (row['xmax'], row['ymin']), 
         (row['xmax'], row['ymax']), 
-        (row['xmax'], row['ymin'])
+        (row['xmin'], row['ymax'])
     ])
 
 def extract_desaster(img_path):
