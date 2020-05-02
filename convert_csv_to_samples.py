@@ -20,6 +20,7 @@ import os
 from os import path
 import json
 from shapely import wkt
+from shapely.geometry import Polygon
 import csv
 from tqdm import tqdm
 import logging
@@ -53,9 +54,9 @@ def export_dataframe_to_samples(df, output_csv, border=10, min_distance=0, fit_a
         logging.debug('Amostrando {}...'.format(disaster_type))
         samples = sample_coords(sub_sampled_df, border, min_distance, fit_anchors, overlap)
 
-        logging.debug('Total de amostras {}'.format(len(samples)))
-        logging.debug('Exportando para CSV: {}...'.format(output_csv))
+        logging.debug('Total de amostras: {}'.format(len(samples)))
 
+        logging.debug('Exportando para CSV: {}...'.format(output_csv))
         write_samples_to_csv(samples, output_csv)
 
 
@@ -75,7 +76,9 @@ def sample_coords(df, border=10, min_distance=0, fit_anchors=False, overlap=True
     
     images = df.img_name.unique()
     for img_name in tqdm(images):
-        
+        #polygonos contidos nessa imagem
+        samples_polygon = []
+
         # amostra os poligonos associados a imagem 
         polygons = df[ df['img_name'] == img_name].geometry.values
 
@@ -84,8 +87,18 @@ def sample_coords(df, border=10, min_distance=0, fit_anchors=False, overlap=True
             xmin, xmax, ymin, ymax = get_sample_coords(coords, border, min_distance, fit_anchors)
 
             #amostra com coordenadas inválida
-            if xmin is None:
+            if xmin is None or xmax is None or ymin is None or ymax is None:
                 continue
+
+            if not overlap:
+                # Converte as coordenadas das amostras em um poligono
+                sample_polygon = convert_to_polygon(xmin, xmax, ymin, ymax)
+
+                # desconsidera a amostra se estiver sobrepondo outras
+                if is_sample_overlaping(sample_polygon, samples_polygon):
+                    continue
+
+                samples_polygon.append(sample_polygon)
 
             sample = (img_name, xmin, ymin, xmax, ymax, disaster_type)
             samples.append(sample)
@@ -109,15 +122,20 @@ def get_sample_coords(coords, border=10, min_distance=0, fit_anchors=False, over
     if xdiff < MIN_WIDTH or ydiff < MIN_HEIGHT:
         return None, None, None, None
 
-    xmin, xmax, ymin, ymax = expand_borders(xmin, xmax, ymin, ymax, border)
 
     if fit_anchors:
         return get_fited_anchor(xmin, xmax, ymin, ymax)
-    
+
+    xmin, xmax, ymin, ymax = expand_borders(xmin, xmax, ymin, ymax, border)
+
     return (xmin, xmax, ymin, ymax)
 
 
 def get_fited_anchor(xmin, xmax, ymin, ymax):
+    '''
+        Aproxima o tamanho da ancora ao tamanho padrão maior mais pŕoximo
+        Se as dimensões forem superiores a maior caixa desconsidera a amostra
+    '''
     xmin, xmax = get_expanded_anchor_min_max(xmin, xmax)
     ymin, ymax = get_expanded_anchor_min_max(ymin, ymax)
     
@@ -127,8 +145,24 @@ def get_fited_anchor(xmin, xmax, ymin, ymax):
     
     return xmin, xmax, ymin, ymax
 
+def expand_borders(xmin, xmax, ymin, ymax, border):
+    '''
+        Expande as coordenadas informadas pelo tamanho da borda informada
+        É limitado as dimensões da imagem (min = 0 e max = image_size)
+    '''
+    xmin = reduce_border(xmin, border)
+    xmax = augment_border(xmax, border)
+    ymin = reduce_border(ymin, border)
+    ymax = augment_border(ymax, border)
+
+    return xmin, xmax, ymin, ymax
+
 
 def get_expanded_anchor_min_max(min_coord, max_coord):
+    '''
+        Recupera as coordenadas minimas e máximas após apróximar ao tamanho da amostra
+    '''
+
     # Recalcula após a adição das bordas
     diff = max_coord - min_coord
 
@@ -149,23 +183,24 @@ def get_expanded_anchor_min_max(min_coord, max_coord):
 
     return min_coord, max_coord
 
-
-def expand_borders(xmin, xmax, ymin, ymax, border):
-    xmin = reduce_border(xmin, border)
-    xmax = augment_border(xmax, border)
-    ymin = reduce_border(ymin, border)
-    ymax = augment_border(ymax, border)
-
-    return xmin, xmax, ymin, ymax
-
 def reduce_border(position, border):
+    ''' 
+        Reduz a coordenada pelo valor da borda, limitado a 0
+    '''
     return max(int(position - border), 0)
 
 def augment_border(position, border):
+    '''
+        Aumenta a coordenada pelo valor da borda limitado ao tamanho da imagem 
+    '''
     return min(int(position + border), IMAGE_SIZE[0])
 
 
 def get_close_anchor_size(anchor_size):
+    '''
+        Recupera o tamanho padrão da ancora maior mais próxima do tamanho informado
+        Se maior que o maior tamanho padrão retorna None
+    '''
     i = 0
     while i < len(ANCHOR_SIZES) and ANCHOR_SIZES[i] < anchor_size:
         i += 1
@@ -176,6 +211,33 @@ def get_close_anchor_size(anchor_size):
     
     return None
 
+
+
+
+def convert_to_polygon(xmin, xmax, ymin, ymax):   
+    '''
+        Converte as coordenadas informadas em um poligono
+    '''
+    return Polygon([
+        (xmin, ymin), 
+        (xmax, ymin), 
+        (xmax, ymax), 
+        (xmin, ymax)
+    ])
+
+def is_sample_overlaping(sample, samples):
+    ''' 
+        Verifica se há sobreposição entre a amostra informada e o conjunto de amostra informado
+        Tanto a amostra quando os exemplos do conjunto de amostras informado devem ser objetos
+        do tipo Polygon
+    '''
+    for s in samples:
+        if s.intersects(sample):
+            return True
+
+    return False
+
+
 def write_samples_to_csv(samples, file_name):
     '''
         Adiciona as amostras ao CSV informado
@@ -185,6 +247,9 @@ def write_samples_to_csv(samples, file_name):
         csv_writer.writerows(samples)
 
 def load_dataframes(input_csv, merge_csv=None):
+    '''
+        Carrega o CSV para um dataframe na memória
+    '''
     
     logging.debug('Carregando dataframe: {}'.format(input_csv))
     df = pd.read_csv(input_csv)
@@ -229,7 +294,6 @@ if __name__ == "__main__":
 
     parser.add_argument("--fit-anchors", help="Cria as caixas de treino no tamanho da ancora maior mais próxima", action="store_true")
 
-    #TODO - Implementar
     parser.add_argument("--no-overlap", help="Evita que haja sobreposição das amostras", action="store_true")
 
     parser.add_argument("-v", "--verbose", help="Exibe mensagens durante a execução", action="store_true")
